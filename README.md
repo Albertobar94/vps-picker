@@ -14,7 +14,8 @@ scratch     1w  detached  -
 ```
 
 - **enter** on a row — attach to that session (mosh + `tmux new -As`)
-- **type a name + enter** — create and attach a new session
+- **type a name + ctrl-n** — create and attach a new session (enter also works
+  when the name matches nothing)
 - **ctrl-x** — kill the selected session
 - **ctrl-r** — refresh the list
 - `● claude` — a Claude Code process is running in that session
