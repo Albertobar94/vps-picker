@@ -45,7 +45,8 @@ self="$(command -v "$0" || echo "$0")"
 # Selecting attaches; typing a non-matching name + enter creates that session.
 out=$(
   list_sessions "$host" | fzf --print-query \
-    --header="[$host]  enter=attach (or create typed name)  ctrl-x=kill  ctrl-r=refresh" \
+    --header="[$host]  enter=attach  ctrl-n=new session from typed name  ctrl-x=kill  ctrl-r=refresh" \
+    --bind "ctrl-n:print-query" \
     --bind "ctrl-x:execute-silent(ssh $host tmux kill-session -t {1})+reload($self --list $host)" \
     --bind "ctrl-r:reload($self --list $host)"
 ) || true
