@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# vps — fzf picker for tmux sessions on a remote host, attached over mosh.
+#   vps [host]          fzf dropdown: enter=attach, type a new name + enter=create, ctrl-x=kill
+#   vps --list [host]   print the session table (used internally by fzf reload)
+# Shows per session: windows, attached/detached, whether a claude pane is live,
+# and the pane title (Claude Code sets it to its current task).
+#
+# Host defaults to $VPS_DEFAULT_HOST, or "vps" — define it in ~/.ssh/config.
+set -euo pipefail
+
+DEFAULT_HOST="${VPS_DEFAULT_HOST:-vps}"
+
+list_sessions() {
+  local host="$1"
+  # One ssh round-trip: sessions, then panes.
+  ssh "$host" '
+    tmux list-sessions -F "S#{session_name}	#{session_windows}w	#{?session_attached,attached,detached}" 2>/dev/null
+    tmux list-panes -a -F "P#{session_name}	#{pane_current_command}	#{pane_title}" 2>/dev/null
+  ' 2>/dev/null | awk -F'\t' '
+    /^S/ { name=substr($1,2); order[++n]=name; win[name]=$2; att[name]=$3 }
+    /^P/ {
+      name=substr($1,2)
+      if ($2 == "claude") { claude[name]="claude" }
+      if ($3 != "" && title[name] == "") { title[name]=$3 }
+    }
+    END {
+      for (i=1; i<=n; i++) {
+        name=order[i]
+        printf "%s\t%s\t%s\t%s\t%s\n", name, win[name], att[name],
+               (name in claude ? "● claude" : "-"), title[name]
+      }
+    }
+  ' | column -t -s $'\t'
+}
+
+host="${1:-$DEFAULT_HOST}"
+if [[ "${1:-}" == "--list" ]]; then
+  list_sessions "${2:-$DEFAULT_HOST}"
+  exit 0
+fi
+
+self="$(command -v "$0" || echo "$0")"
+
+# --print-query: line 1 is always the query, line 2 the selection (if any).
+# Selecting attaches; typing a non-matching name + enter creates that session.
+out=$(
+  list_sessions "$host" | fzf --print-query \
+    --header="[$host]  enter=attach (or create typed name)  ctrl-x=kill  ctrl-r=refresh" \
+    --bind "ctrl-x:execute-silent(ssh $host tmux kill-session -t {1})+reload($self --list $host)" \
+    --bind "ctrl-r:reload($self --list $host)"
+) || true
+
+query="$(sed -n 1p <<<"$out")"
+selection="$(sed -n 2p <<<"$out")"
+sess="${selection%% *}"
+[[ -z "$sess" ]] && sess="$query"
+[[ -z "$sess" ]] && exit 0
+
+exec mosh "$host" -- tmux new -As "$sess"
