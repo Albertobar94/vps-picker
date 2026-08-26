@@ -41,20 +41,28 @@ fi
 
 self="$(command -v "$0" || echo "$0")"
 
+new_label="＋ new session"
+
 # --print-query: line 1 is always the query, line 2 the selection (if any).
-# Selecting attaches; typing a non-matching name + enter creates that session.
+# Three ways to create: pick the "＋ new session" row (prompts for a name),
+# ctrl-n (uses the typed query), or enter on a query that matches nothing.
 out=$(
-  list_sessions "$host" | fzf --print-query \
-    --header="[$host]  enter=attach  ctrl-n=new session from typed name  ctrl-x=kill  ctrl-r=refresh" \
+  { list_sessions "$host"; echo "$new_label"; } | fzf --print-query \
+    --header="[$host]  enter=attach  ctrl-n=new from typed name  ctrl-x=kill  ctrl-r=refresh" \
     --bind "ctrl-n:print-query" \
-    --bind "ctrl-x:execute-silent(ssh $host tmux kill-session -t {1})+reload($self --list $host)" \
-    --bind "ctrl-r:reload($self --list $host)"
+    --bind "ctrl-x:execute-silent(ssh $host tmux kill-session -t {1})+reload($self --list $host; echo $new_label)" \
+    --bind "ctrl-r:reload($self --list $host; echo $new_label)"
 ) || true
 
 query="$(sed -n 1p <<<"$out")"
 selection="$(sed -n 2p <<<"$out")"
-sess="${selection%% *}"
-[[ -z "$sess" ]] && sess="$query"
+
+if [[ "$selection" == "$new_label" ]]; then
+  read -rp "new session name: " sess
+else
+  sess="${selection%% *}"
+  [[ -z "$sess" ]] && sess="$query"
+fi
 [[ -z "$sess" ]] && exit 0
 
 exec mosh "$host" -- tmux new -As "$sess"
